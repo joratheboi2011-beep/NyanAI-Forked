@@ -15,13 +15,14 @@
             </h1>
             
             <div class="mb-4">
-                <label class="block text-sm font-medium text-gray-400 mb-1">API Endpoint / Proxy</label>
-                <input type="text" id="apiEndpoint" placeholder="https://api.yourproxy.com/v1" 
+                <label class="block text-sm font-medium text-gray-400 mb-1">API Endpoint / Proxy URL</label>
+                <input type="text" id="apiEndpoint" placeholder="https://ark.cn-beijing.volces.com/api/v3" 
                        class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <p class="text-[10px] text-gray-500 mt-1">Do not include "/images/generations" at the end.</p>
             </div>
 
             <div class="mb-4">
-                <label class="block text-sm font-medium text-gray-400 mb-2">API Key / Token</label>
+                <label class="block text-sm font-medium text-gray-400 mb-1">API Key / Token</label>
                 <input type="password" id="apiKey" placeholder="sk-..." 
                        class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
             </div>
@@ -29,14 +30,20 @@
             <div class="mb-4">
                 <label class="block text-sm font-medium text-gray-400 mb-1">Select AI Model</label>
                 <select id="modelSelect" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    <option value="veo-3">Veo 3</option>
-                    <option value="seedream-4.5">Seedream 4.5</option>
-                    <option value="seedream-4">Seedream 4</option>
-                    <option value="nano-banana">Nano Banana</option>
-                    <option value="seedance-2.0">Seedance 2.0</option>
-                    <option value="seedance-1.0">Seedance 1.0</option>
-                    <option value="veo-2">Veo 2</option>
-                    <option value="veo">Veo</option>
+                    <optgroup label="Google Veo Ecosystem">
+                        <option value="veo-3">Veo 3</option>
+                        <option value="veo-2">Veo 2</option>
+                        <option value="veo">Veo Standard</option>
+                        <option value="nano-banana">Nano Banana</option>
+                    </optgroup>
+                    <optgroup label="ByteDance Seedream (APAC)">
+                        <option value="doubao-seedream-5-0-260128">Seedream 4.5</option>
+                        <option value="doubao-seed-2-0-pro-260215">Seedream 4</option>
+                    </optgroup>
+                    <optgroup label="ByteDance Seedance (APAC)">
+                        <option value="doubao-seedance-2-0-260128">Seedance 2.0</option>
+                        <option value="doubao-seedance-1-0">Seedance 1.0</option>
+                    </optgroup>
                 </select>
             </div>
 
@@ -51,7 +58,7 @@
         </div>
 
         <div class="text-xs text-gray-500 border-t border-gray-700 pt-4">
-            Security Notice: Keys never leave your browser window.
+            Security Notice: Processing happens strictly client-side. Keys never leave your browser window.
         </div>
     </div>
 
@@ -60,7 +67,7 @@
         <div class="w-full max-w-2xl bg-gray-800 rounded-xl border border-gray-700 flex-1 flex flex-col items-center justify-center p-4 relative min-h-[400px]">
             <div id="placeholderText" class="text-center text-gray-500">
                 <p class="text-5xl mb-2">✨</p>
-                <p>Enter your credentials and prompt to visualize your creation</p>
+                <p>Enter your regional credentials and prompt to visualize your creation</p>
             </div>
             
             <div id="loader" class="hidden text-center">
@@ -74,7 +81,7 @@
 
         <div class="w-full max-w-2xl mt-6">
             <div class="flex flex-col sm:flex-row gap-3 bg-gray-800 p-3 rounded-xl border border-gray-700 shadow-lg">
-                <input type="text" id="promptInput" placeholder="A futuristic neon cat running down a highway..." 
+                <input type="text" id="promptInput" placeholder="A majestic neon cat exploring the cyberpunk cities of Tokyo..." 
                        class="flex-1 bg-transparent text-white placeholder-gray-500 px-3 py-2 outline-none w-full">
                 <button id="generateBtn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-6 py-2.5 rounded-lg transition active:scale-95">
                     Generate
@@ -106,19 +113,27 @@
 
         generateBtn.addEventListener('click', async () => {
             const prompt = promptInput.value.trim();
-            const endpoint = document.getElementById('apiEndpoint').value.trim();
+            let endpoint = document.getElementById('apiEndpoint').value.trim();
             const key = document.getElementById('apiKey').value.trim();
             const model = modelSelect.value;
 
-            if (!prompt || !endpoint || !key) {
-                alert("Please fill out your Prompt, API Endpoint, and Secret Key!");
+            // Default fallbacks if empty
+            if (!endpoint) endpoint = "https://ark.cn-beijing.volces.com/api/v3";
+
+            if (!prompt || !key) {
+                alert("Please fill out both your Prompt and your Secret API Key!");
                 return;
+            }
+
+            // Standardize endpoint string (remove trailing slash if present)
+            if (endpoint.endsWith('/')) {
+                endpoint = endpoint.slice(0, -1);
             }
 
             placeholderText.classList.add('hidden');
             outputImage.classList.add('hidden');
             loader.classList.remove('hidden');
-            generatingModel.innerText = `Calling model architecture: ${modelSelect.options[modelSelect.selectedIndex].text}`;
+            generatingModel.innerText = `Calling model architecture endpoint: ${modelSelect.options[modelSelect.selectedIndex].text}`;
 
             try {
                 const response = await fetch(`${endpoint}/images/generations`, {
@@ -127,17 +142,39 @@
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${key}`
                     },
-                    body: JSON.stringify({ model: model, prompt: prompt })
+                    body: JSON.stringify({ 
+                        model: model, 
+                        prompt: prompt,
+                        size: "1024x1024"
+                    })
                 });
 
+                // Robust Handling: Catch non-JSON HTML error streams before parsing
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    // Check if it returned an HTML error page
+                    if (errorText.trim().startsWith('<')) {
+                        throw new Error(`Server returned HTML instead of JSON (Status code: ${response.status}). Double check your Base URL path endpoint config.`);
+                    } else {
+                        throw new Error(`API Error (Status ${response.status}): ${errorText}`);
+                    }
+                }
+
                 const data = await response.json();
-                loader.classList.add('hidden');
-                outputImage.classList.remove('hidden');
-                outputImage.src = data.data[0].url; 
+                
+                if (data && data.data && data.data[0] && data.data[0].url) {
+                    loader.classList.add('hidden');
+                    outputImage.classList.remove('hidden');
+                    outputImage.src = data.data[0].url; 
+                } else {
+                    throw new Error("Unexpected API JSON structure. Data array url parameter missing.");
+                }
+
             } catch (error) {
                 loader.classList.add('hidden');
                 placeholderText.classList.remove('hidden');
-                alert("Generation Error: " + error.message);
+                alert("Generation Error:\n" + error.message);
+                console.error(error);
             }
         });
     </script>
